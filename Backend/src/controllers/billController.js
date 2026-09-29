@@ -524,6 +524,64 @@ const cancelBill = async (req, res, next) => {
 };
 
 /**
+ * @route   DELETE /api/bills/:id
+ * @desc    Permanently delete a bill from the database (Admin only)
+ * @access  Private (Admin only)
+ */
+const deleteBill = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const bill = await Bill.findById(id);
+
+    if (!bill) {
+      return res.status(404).json({
+        success: false,
+        message: 'Bill not found.',
+        errorCode: 'BILL_NOT_FOUND',
+      });
+    }
+
+    // Revert customer statistics if bill was not already cancelled
+    if (bill.status !== BILL_STATUS.CANCELLED && bill.customerId) {
+      await Customer.findByIdAndUpdate(bill.customerId, {
+        $inc: {
+          totalBills: -1,
+          totalSpent: -bill.grandTotal,
+        },
+      });
+    }
+
+    // Audit log for deletion
+    await AuditLog.create({
+      action: 'BILL_DELETED',
+      performedBy: req.user._id,
+      outletId: bill.outletId,
+      details: {
+        billId: bill._id,
+        billNumber: bill.billNumber,
+        grandTotal: bill.grandTotal,
+        customerName: bill.customerSnapshot?.name,
+        customerMobile: bill.customerSnapshot?.mobile,
+        deletedByAdmin: req.user.email || req.user.name,
+      },
+    });
+
+    await Bill.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: `Bill ${bill.billNumber} has been permanently deleted.`,
+      data: {
+        billId: bill._id,
+        billNumber: bill.billNumber,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * @route   PUT /api/bills/:id
  * @desc    Edit existing bill (modify items, quantities, customer, discount, payment method)
  * @access  Private (Staff for own outlet, Manager, Admin)
@@ -817,5 +875,6 @@ module.exports = {
   getBillById,
   updateBill,
   cancelBill,
+  deleteBill,
 };
 

@@ -10,8 +10,9 @@ import {
   Download,
   AlertCircle,
   Edit2,
+  Trash2,
 } from 'lucide-react';
-import { getBillsApi, cancelBillApi } from '../api/bills';
+import { getBillsApi, cancelBillApi, deleteBillApi } from '../api/bills';
 import { getOutletsApi } from '../api/outlets';
 import { useAuthStore } from '../store/authStore';
 import ReceiptModal from '../components/ReceiptModal';
@@ -99,6 +100,23 @@ export default function Bills() {
       fetchBills();
     } catch (err) {
       alert(`Failed to cancel bill: ${err.message}`);
+    }
+  };
+
+  const handleDeleteBill = async (bill) => {
+    const confirmDelete = window.confirm(
+      `⚠️ ADMIN ACTION: Are you sure you want to PERMANENTLY delete bill ${bill.billNumber}?\n\nAmount: ${bill.outletId?.currency || 'Rs.'} ${bill.grandTotal?.toFixed(2)}\n\nThis will completely remove the bill from the database and adjust customer records. This cannot be undone.`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      await deleteBillApi(bill._id);
+      if (activeBill && activeBill._id === bill._id) {
+        setActiveBill(null);
+      }
+      fetchBills();
+    } catch (err) {
+      alert(`Failed to delete bill: ${err.message}`);
     }
   };
 
@@ -306,6 +324,16 @@ export default function Bills() {
                               <span>Edit</span>
                             </button>
                           )}
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteBill(bill)}
+                              className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-semibold flex items-center space-x-1 transition-colors cursor-pointer"
+                              title="Delete Bill Permanently (Admin Only)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Delete</span>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -347,10 +375,12 @@ export default function Bills() {
         bill={activeBill}
         isOpen={Boolean(activeBill)}
         canCancel={isAdmin || isManager}
+        canDelete={isAdmin}
         canEdit={true}
         restaurantName={settings?.restaurantName}
         onClose={() => setActiveBill(null)}
         onCancelBill={handleCancelBill}
+        onDeleteBill={handleDeleteBill}
         onEditBill={(b) => setEditingBill(b)}
       />
 

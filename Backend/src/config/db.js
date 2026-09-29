@@ -1,6 +1,15 @@
+require('dotenv').config();
 const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
+const dns = require('dns');
+
+// Resolve querySrv ECONNREFUSED on Windows / ISP DNS for MongoDB Atlas
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (dnsErr) {
+  // Ignore in case environment restricts custom DNS
+}
 
 let memoryServer = null;
 

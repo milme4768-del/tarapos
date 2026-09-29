@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Phone,
   Edit2,
+  Image as ImageIcon,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { generateReceiptPDF, shareBillOnWhatsApp } from '../utils/receiptGenerator';
@@ -44,8 +45,8 @@ export default function BillSuccessModal({
     generateReceiptPDF(bill, outlet, restaurantName);
   };
 
-  const handleWhatsApp = () => {
-    shareBillOnWhatsApp(bill, outlet, whatsappLink, restaurantName, sharePhone.trim());
+  const handleWhatsApp = (format = 'pdf') => {
+    shareBillOnWhatsApp(bill, outlet, whatsappLink, restaurantName, sharePhone.trim(), format);
   };
 
   const handlePrint = () => {
@@ -114,14 +115,28 @@ export default function BillSuccessModal({
 
           {/* Main Action Buttons */}
           <div className="space-y-2 pt-1">
-            {/* Share on WhatsApp */}
-            <button
-              onClick={handleWhatsApp}
-              className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white rounded-xl font-bold text-sm shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
-            >
-              <Share2 className="w-4 h-4" />
-              <span>Share on WhatsApp</span>
-            </button>
+            {/* Share on WhatsApp Buttons (PDF or JPG Image) */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleWhatsApp('pdf')}
+                className="flex items-center justify-center space-x-1.5 py-3 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white rounded-xl font-bold text-xs shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+                title="Send Bill PDF to customer on WhatsApp"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>WhatsApp (PDF)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleWhatsApp('image')}
+                className="flex items-center justify-center space-x-1.5 py-3 px-2 bg-teal-600 hover:bg-teal-700 active:scale-[0.98] text-white rounded-xl font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer"
+                title="Send Bill JPG Image to customer on WhatsApp"
+              >
+                <ImageIcon className="w-4 h-4" />
+                <span>WhatsApp (JPG)</span>
+              </button>
+            </div>
 
             {/* Download Bill PDF & Print */}
             <div className="grid grid-cols-2 gap-2">

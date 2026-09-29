@@ -10,8 +10,10 @@ import {
   Calendar,
   Sparkles,
   ShoppingBag,
+  Trash2,
 } from 'lucide-react';
 import { getDashboardSummaryApi } from '../../api/reports';
+import { deleteBillApi } from '../../api/bills';
 import { useAuthStore } from '../../store/authStore';
 import ReceiptModal from '../../components/ReceiptModal';
 import EditBillModal from '../../components/EditBillModal';
@@ -39,6 +41,23 @@ export default function AdminDashboard() {
       console.error('Failed to load dashboard:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDeleteBill = async (bill) => {
+    const confirmDelete = window.confirm(
+      `⚠️ ADMIN ACTION: Are you sure you want to PERMANENTLY delete bill ${bill.billNumber}?\n\nAmount: ${currency}${bill.grandTotal?.toFixed(2)}\n\nThis will remove the bill completely from the database and adjust customer records. This cannot be undone.`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      await deleteBillApi(bill._id);
+      if (activeBill && activeBill._id === bill._id) {
+        setActiveBill(null);
+      }
+      fetchDashboard();
+    } catch (err) {
+      alert(`Failed to delete bill: ${err.message}`);
     }
   };
 
@@ -233,13 +252,24 @@ export default function AdminDashboard() {
                       {currency}{bill.grandTotal.toFixed(2)}
                     </td>
                     <td className="py-2.5 px-4 text-center">
-                      <button
-                        onClick={() => setActiveBill(bill)}
-                        className="p-1 text-slate-500 hover:text-orange-600"
-                        title="View Receipt"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-center space-x-1.5">
+                        <button
+                          onClick={() => setActiveBill(bill)}
+                          className="p-1 text-slate-500 hover:text-orange-600 transition-colors cursor-pointer"
+                          title="View Receipt"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        {user?.role === 'admin' && (
+                          <button
+                            onClick={() => handleDeleteBill(bill)}
+                            className="p-1 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                            title="Delete Bill Permanently (Admin Only)"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -254,9 +284,11 @@ export default function AdminDashboard() {
         bill={activeBill}
         isOpen={Boolean(activeBill)}
         canCancel={user?.role === 'admin'}
+        canDelete={user?.role === 'admin'}
         canEdit={true}
         restaurantName={settings?.restaurantName}
         onClose={() => setActiveBill(null)}
+        onDeleteBill={handleDeleteBill}
         onEditBill={(b) => setEditingBill(b)}
       />
 

@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "seed": "node src/utils/seed.js"
+    "seed": "node src/utils/seed.js",
+    "clean-db": "node src/utils/clean-db.js",
+    "import-menu": "node src/utils/import-menu.js"
   },
   "keywords": ["restaurant", "pos", "billing", "multi-outlet"],
   "type": "commonjs",

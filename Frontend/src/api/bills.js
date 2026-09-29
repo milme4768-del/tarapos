@@ -24,3 +24,8 @@ export const cancelBillApi = async (id, reason) => {
   const { data } = await api.post(`/bills/${id}/cancel`, { reason });
   return data;
 };
+
+export const deleteBillApi = async (id) => {
+  const { data } = await api.delete(`/bills/${id}`);
+  return data;
+};
