@@ -58,9 +58,9 @@ export default function ReceiptModal({
             <h2 className="text-sm sm:text-base font-bold uppercase tracking-wide font-sans text-slate-900 leading-tight">
               {restaurantName || 'Taraaang Organic Food PVT LTD'}
             </h2>
-            <p className="text-slate-600 font-sans">{outlet.name || 'Central Outlet'}</p>
-            {outlet.address && <p className="text-[11px] text-slate-500 font-sans">{outlet.address}</p>}
-            {outlet.phone && <p className="text-[11px] text-slate-500">Ph: {outlet.phone}</p>}
+            {outlet?.name && <p className="text-slate-600 font-sans">{outlet.name}</p>}
+            {outlet?.address && <p className="text-[11px] text-slate-500 font-sans">{outlet.address}</p>}
+            {outlet?.phone && <p className="text-[11px] text-slate-500">Ph: {outlet.phone}</p>}
           </div>
 
           <div className="space-y-1 py-1 border-b border-dashed border-slate-300">

@@ -35,6 +35,12 @@ const userSchema = new mongoose.Schema(
       index: true,
       default: null,
     },
+    outlets: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Outlet',
+      },
+    ],
     phone: {
       type: String,
       trim: true,

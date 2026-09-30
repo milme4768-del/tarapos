@@ -31,7 +31,7 @@ const login = async (req, res, next) => {
     // Find user and explicitly select password
     const user = await User.findOne({ email: email.toLowerCase().trim() })
       .select('+password')
-      .populate('outletId', 'name code address phone taxPercentage currency isActive');
+      .populate('outletId outlets', 'name code address phone taxPercentage currency isActive');
 
     if (!user) {
       return res.status(401).json({
@@ -100,7 +100,7 @@ const login = async (req, res, next) => {
 const getMe = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id)
-      .populate('outletId', 'name code address phone taxPercentage currency isActive');
+      .populate('outletId outlets', 'name code address phone taxPercentage currency isActive');
 
     const settings = (await Setting.findOne({ key: 'general' })) || {};
 

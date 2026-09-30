@@ -77,26 +77,41 @@ const createBill = async (req, res, next) => {
     }
 
     // 3. Determine Outlet
-    let outletId = req.user.outletId ? (req.user.outletId._id || req.user.outletId) : null;
-    if (req.user.role === ROLES.ADMIN && req.body.outletId) {
-      outletId = req.body.outletId;
+    let outletId = undefined;
+    if (req.body.outletId !== undefined) {
+      if (req.body.outletId === 'none' || req.body.outletId === '' || req.body.outletId === null) {
+        outletId = null;
+      } else {
+        outletId = req.body.outletId;
+      }
+    } else {
+      outletId = req.user.outletId ? (req.user.outletId._id || req.user.outletId) : null;
     }
 
-    if (!outletId) {
-      return res.status(400).json({
-        success: false,
-        message: 'No outlet assigned or specified for this bill.',
-        errorCode: 'OUTLET_MISSING',
-      });
-    }
+    let outlet = null;
+    if (outletId) {
+      // Non-admin can only bill for outlets they are assigned to
+      if (req.user.role !== ROLES.ADMIN) {
+        const allowedIds = (req.user.outlets && req.user.outlets.length > 0)
+          ? req.user.outlets.map((o) => (o._id || o).toString())
+          : (req.user.outletId ? [(req.user.outletId._id || req.user.outletId).toString()] : []);
+        if (!allowedIds.includes(outletId.toString())) {
+          return res.status(403).json({
+            success: false,
+            message: 'Access denied: You are not assigned to this outlet.',
+            errorCode: 'OUTLET_ACCESS_DENIED',
+          });
+        }
+      }
 
-    const outlet = await Outlet.findById(outletId);
-    if (!outlet || !outlet.isActive) {
-      return res.status(400).json({
-        success: false,
-        message: 'The designated outlet is inactive or not found.',
-        errorCode: 'OUTLET_INACTIVE',
-      });
+      outlet = await Outlet.findById(outletId);
+      if (!outlet || !outlet.isActive) {
+        return res.status(400).json({
+          success: false,
+          message: 'The designated outlet is inactive or not found.',
+          errorCode: 'OUTLET_INACTIVE',
+        });
+      }
     }
 
     // 4. Fetch Products & Variants to verify prices and build immutable snapshots
@@ -187,6 +202,9 @@ const createBill = async (req, res, next) => {
     }
 
     // 5. Calculate Discount & Tax
+    const settings = (await Setting.findOne({ key: 'general' })) || {};
+    const restaurantName = settings.restaurantName || 'Taraaang Organic Food PVT LTD';
+
     let discountPaise = 0;
     const dType = discountType === 'percentage' ? 'percentage' : 'flat';
     const dVal = Number(discountValue !== undefined && discountValue !== '' ? discountValue : discount) || 0;
@@ -199,7 +217,7 @@ const createBill = async (req, res, next) => {
     }
 
     const taxablePaise = Math.max(0, subtotalPaise - discountPaise);
-    const taxPercentage = Number(outlet.taxPercentage) || 0;
+    const taxPercentage = outlet ? (Number(outlet.taxPercentage) || 0) : (Number(settings.defaultTaxPercentage) || 0);
     const taxPaise = calculateTaxPaise(taxablePaise, taxPercentage);
     const grandTotalPaise = taxablePaise + taxPaise;
 
@@ -210,9 +228,10 @@ const createBill = async (req, res, next) => {
 
     // 6. Generate Atomic Bill Number
     const currentYear = new Date().getFullYear();
-    const counterKey = `bill_${outlet.code}_${currentYear}`;
+    const outletCode = outlet ? outlet.code : 'TOF';
+    const counterKey = `bill_${outletCode}_${currentYear}`;
     const nextSeq = await Counter.getNextSequence(counterKey);
-    const billNumber = `${outlet.code}-${currentYear}-${String(nextSeq).padStart(6, '0')}`;
+    const billNumber = `${outletCode}-${currentYear}-${String(nextSeq).padStart(6, '0')}`;
 
     // 7. Customer Deduplication & History Updates (Mandatory)
     const normalized = normalizeMobile(rawMobile);
@@ -241,7 +260,7 @@ const createBill = async (req, res, next) => {
     const bill = await Bill.create({
       billNumber,
       clientRequestId: clientRequestId || undefined,
-      outletId: outlet._id,
+      outletId: outlet ? outlet._id : null,
       createdBy: req.user._id,
       customerId: customerDoc ? customerDoc._id : null,
       customerSnapshot,
@@ -264,19 +283,18 @@ const createBill = async (req, res, next) => {
     ]);
 
     // 9. Generate WhatsApp Link
-    const settings = (await Setting.findOne({ key: 'general' })) || {};
-    const restaurantName = settings.restaurantName || 'Taraaang Organic Food PVT LTD';
-
+    const outletSuffix = outlet?.name ? ` (${outlet.name})` : '';
     let whatsappText = settings.defaultWhatsAppMessage ||
-      'Hello {{customerName}},\n\nThank you for dining with {{restaurantName}} ({{outletName}})!\n\nYour bill {{billNumber}} has been generated.\nTotal: {{currency}}{{grandTotal}}\nDate: {{date}}\n\nVisit again soon!';
+      `Hello {{customerName}},\n\nThank you for dining with {{restaurantName}}${outletSuffix}!\n\nYour bill {{billNumber}} has been generated.\nTotal: {{currency}}{{grandTotal}}\nDate: {{date}}\n\nVisit again soon!`;
 
     whatsappText = whatsappText
       .replace(/{{customerName}}/g, customerSnapshot.name)
       .replace(/{{restaurantName}}/g, restaurantName)
-      .replace(/{{outletName}}/g, outlet.name)
+      .replace(/\s*\({{outletName}}\)/g, outletSuffix)
+      .replace(/{{outletName}}/g, outlet?.name || '')
       .replace(/{{billNumber}}/g, bill.billNumber)
-      .replace(/{{grandTotal}}/g, `${outlet.currency || '₹'}${bill.grandTotal}`)
-      .replace(/{{currency}}/g, outlet.currency || '₹')
+      .replace(/{{grandTotal}}/g, `${outlet?.currency || 'Rs. '}${bill.grandTotal}`)
+      .replace(/{{currency}}/g, outlet?.currency || 'Rs. ')
       .replace(/{{date}}/g, new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }));
 
     const normalizedMobile = customerDoc
@@ -327,16 +345,33 @@ const getBills = async (req, res, next) => {
 
     // Outlet Isolation & Role Access
     if (req.user.role === ROLES.STAFF) {
-      // Billing staff only sees bills for their outlet, or only their created bills
-      query.outletId = req.user.outletId._id || req.user.outletId;
+      const allowedOutlets = (req.user.outlets && req.user.outlets.length > 0)
+        ? req.user.outlets.map((o) => o._id || o)
+        : (req.user.outletId ? [req.user.outletId._id || req.user.outletId] : []);
+      if (outletId) {
+        query.outletId = outletId === 'none' ? null : outletId;
+      } else if (allowedOutlets.length > 0) {
+        query.$or = [{ outletId: { $in: allowedOutlets } }, { createdBy: req.user._id }];
+      } else {
+        query.createdBy = req.user._id;
+      }
       if (req.query.myOnly === 'true') {
         query.createdBy = req.user._id;
       }
     } else if (req.user.role === ROLES.MANAGER) {
-      query.outletId = req.user.outletId._id || req.user.outletId;
+      const allowedOutlets = (req.user.outlets && req.user.outlets.length > 0)
+        ? req.user.outlets.map((o) => o._id || o)
+        : (req.user.outletId ? [req.user.outletId._id || req.user.outletId] : []);
+      if (outletId) {
+        query.outletId = outletId === 'none' ? null : outletId;
+      } else if (allowedOutlets.length > 0) {
+        query.$or = [{ outletId: { $in: allowedOutlets } }, { createdBy: req.user._id }];
+      } else {
+        query.createdBy = req.user._id;
+      }
     } else if (req.user.role === ROLES.ADMIN) {
       if (outletId) {
-        query.outletId = outletId;
+        query.outletId = outletId === 'none' ? null : outletId;
       }
     }
 
@@ -438,15 +473,20 @@ const getBillById = async (req, res, next) => {
     }
 
     // Role access check
-    if (
-      req.user.role !== ROLES.ADMIN &&
-      bill.outletId._id.toString() !== (req.user.outletId._id || req.user.outletId).toString()
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied to bills from other outlets.',
-        errorCode: 'OUTLET_ACCESS_DENIED',
-      });
+    if (req.user.role !== ROLES.ADMIN) {
+      const allowedOutlets = (req.user.outlets && req.user.outlets.length > 0)
+        ? req.user.outlets.map((o) => (o._id || o).toString())
+        : (req.user.outletId ? [(req.user.outletId._id || req.user.outletId).toString()] : []);
+      const billOutletStr = bill.outletId ? (bill.outletId._id || bill.outletId).toString() : null;
+      const isCreator = bill.createdBy && (bill.createdBy._id || bill.createdBy).toString() === req.user._id.toString();
+
+      if (billOutletStr && !allowedOutlets.includes(billOutletStr) && !isCreator) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied to bills from other outlets.',
+          errorCode: 'OUTLET_ACCESS_DENIED',
+        });
+      }
     }
 
     res.status(200).json({
@@ -617,15 +657,20 @@ const updateBill = async (req, res, next) => {
     }
 
     // Role and outlet access check
-    if (
-      req.user.role !== ROLES.ADMIN &&
-      bill.outletId._id.toString() !== (req.user.outletId._id || req.user.outletId).toString()
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied: You cannot edit bills from another outlet.',
-        errorCode: 'OUTLET_ACCESS_DENIED',
-      });
+    if (req.user.role !== ROLES.ADMIN) {
+      const allowedOutlets = (req.user.outlets && req.user.outlets.length > 0)
+        ? req.user.outlets.map((o) => (o._id || o).toString())
+        : (req.user.outletId ? [(req.user.outletId._id || req.user.outletId).toString()] : []);
+      const billOutletStr = bill.outletId ? (bill.outletId._id || bill.outletId).toString() : null;
+      const isCreator = bill.createdBy && (bill.createdBy._id || bill.createdBy).toString() === req.user._id.toString();
+
+      if (billOutletStr && !allowedOutlets.includes(billOutletStr) && !isCreator) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You cannot edit bills from another outlet.',
+          errorCode: 'OUTLET_ACCESS_DENIED',
+        });
+      }
     }
 
     const oldGrandTotal = bill.grandTotal;

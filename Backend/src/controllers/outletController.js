@@ -11,8 +11,11 @@ const getOutlets = async (req, res, next) => {
     let query = {};
 
     if (req.user.role !== ROLES.ADMIN) {
-      // Staff/Manager only sees their assigned active outlet
-      query = { _id: req.user.outletId, isActive: true };
+      // Staff/Manager sees all their assigned active outlets
+      const allowedIds = (req.user.outlets && req.user.outlets.length > 0)
+        ? req.user.outlets.map((o) => o._id || o)
+        : (req.user.outletId ? [req.user.outletId._id || req.user.outletId] : []);
+      query = { _id: { $in: allowedIds }, isActive: true };
     } else if (req.query.activeOnly === 'true') {
       query.isActive = true;
     }
@@ -47,15 +50,17 @@ const getOutletById = async (req, res, next) => {
     }
 
     // Verify outlet access
-    if (
-      req.user.role !== ROLES.ADMIN &&
-      req.user.outletId.toString() !== outlet._id.toString()
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied to this outlet',
-        errorCode: 'OUTLET_ACCESS_DENIED',
-      });
+    if (req.user.role !== ROLES.ADMIN) {
+      const allowedIds = (req.user.outlets && req.user.outlets.length > 0)
+        ? req.user.outlets.map((o) => (o._id || o).toString())
+        : (req.user.outletId ? [(req.user.outletId._id || req.user.outletId).toString()] : []);
+      if (!allowedIds.includes(outlet._id.toString())) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied to this outlet',
+          errorCode: 'OUTLET_ACCESS_DENIED',
+        });
+      }
     }
 
     res.status(200).json({

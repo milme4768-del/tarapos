@@ -59,7 +59,14 @@ const getDashboardSummary = async (req, res, next) => {
     };
 
     if (req.user.role !== ROLES.ADMIN) {
-      baseMatch.outletId = new mongoose.Types.ObjectId(req.user.outletId._id || req.user.outletId);
+      const allowedIds = (req.user.outlets && req.user.outlets.length > 0)
+        ? req.user.outlets.map((o) => new mongoose.Types.ObjectId(o._id || o))
+        : (req.user.outletId ? [new mongoose.Types.ObjectId(req.user.outletId._id || req.user.outletId)] : []);
+      if (allowedIds.length > 0) {
+        baseMatch.$or = [{ outletId: { $in: allowedIds } }, { createdBy: req.user._id }];
+      } else {
+        baseMatch.createdBy = req.user._id;
+      }
     }
 
     const todayMatch = {
@@ -93,8 +100,10 @@ const getDashboardSummary = async (req, res, next) => {
       {
         $match: {
           status: BILL_STATUS.COMPLETED,
-          ...(req.user.role !== ROLES.ADMIN
-            ? { outletId: new mongoose.Types.ObjectId(req.user.outletId._id || req.user.outletId) }
+          ...(req.user.role !== ROLES.ADMIN && baseMatch.$or
+            ? { $or: baseMatch.$or }
+            : req.user.role !== ROLES.ADMIN
+            ? { createdBy: req.user._id }
             : {}),
         },
       },
@@ -196,15 +205,17 @@ const getOutletReport = async (req, res, next) => {
     const outletObjectId = new mongoose.Types.ObjectId(id);
 
     // Verify access
-    if (
-      req.user.role !== ROLES.ADMIN &&
-      (req.user.outletId._id || req.user.outletId).toString() !== id
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied to this outlet report.',
-        errorCode: 'OUTLET_ACCESS_DENIED',
-      });
+    if (req.user.role !== ROLES.ADMIN) {
+      const allowedIds = (req.user.outlets && req.user.outlets.length > 0)
+        ? req.user.outlets.map((o) => (o._id || o).toString())
+        : (req.user.outletId ? [(req.user.outletId._id || req.user.outletId).toString()] : []);
+      if (!allowedIds.includes(id)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied to this outlet report.',
+          errorCode: 'OUTLET_ACCESS_DENIED',
+        });
+      }
     }
 
     const outlet = await Outlet.findById(id);
@@ -317,9 +328,20 @@ const getSalesReport = async (req, res, next) => {
     };
 
     if (req.user.role !== ROLES.ADMIN) {
-      matchQuery.outletId = new mongoose.Types.ObjectId(req.user.outletId._id || req.user.outletId);
+      const allowedIds = (req.user.outlets && req.user.outlets.length > 0)
+        ? req.user.outlets.map((o) => new mongoose.Types.ObjectId(o._id || o))
+        : (req.user.outletId ? [new mongoose.Types.ObjectId(req.user.outletId._id || req.user.outletId)] : []);
+      if (outletId) {
+        matchQuery.outletId = new mongoose.Types.ObjectId(outletId);
+      } else if (allowedIds.length > 0) {
+        matchQuery.outletId = { $in: allowedIds };
+      }
     } else if (outletId) {
-      matchQuery.outletId = new mongoose.Types.ObjectId(outletId);
+      if (outletId === 'none' || outletId === 'null') {
+        matchQuery.outletId = null;
+      } else {
+        matchQuery.outletId = new mongoose.Types.ObjectId(outletId);
+      }
     }
 
     const dateFilter = getDateRangeFilter(dateRange, startDate, endDate);

@@ -29,7 +29,7 @@ const authenticate = async (req, res, next) => {
       process.env.JWT_SECRET || 'super_secret_taraaang_jwt_key_2026_production'
     );
 
-    const user = await User.findById(decoded.id).populate('outletId', 'name code isActive taxPercentage currency');
+    const user = await User.findById(decoded.id).populate('outletId outlets', 'name code isActive taxPercentage currency');
 
     if (!user || !user.isActive) {
       return res.status(401).json({

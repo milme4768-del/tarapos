@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ea580c"/>
+      <stop offset="100%" stop-color="#c2410c"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <!-- Background with rounded corners for adaptive/maskable icon -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  
+  <!-- Inner circular glow -->
+  <circle cx="256" cy="230" r="160" fill="#ffffff" fill-opacity="0.12"/>
+  
+  <!-- Utensils Crossed & Leaf Icon (Taraaang Food Brand) -->
+  <g filter="url(#shadow)" stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Fork -->
+    <path d="M190 120 v90 c0 30 25 55 55 55 v125 M165 120 v55 M215 120 v55" stroke-width="22"/>
+    <!-- Spoon / Knife crossed -->
+    <path d="M322 120 c-22 0 -40 25 -40 55 c0 25 15 45 35 52 v163" stroke-width="22"/>
+    <path d="M322 120 c22 0 40 25 40 55 c0 25 -15 45 -35 52" stroke-width="22"/>
+  </g>
+
+  <!-- Small Organic Leaf Accent -->
+  <path d="M256 120 Q 290 80 330 90 Q 330 130 290 140 Z" fill="#22c55e" stroke="#ffffff" stroke-width="8"/>
+
+  <!-- Brand Typography -->
+  <text x="256" y="445" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="44" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="4">
+    TARAAANG
+  </text>
+  <text x="256" y="482" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="24" font-weight="700" fill="#fed7aa" text-anchor="middle" letter-spacing="6">
+    POS BILLING
+  </text>
+</svg>

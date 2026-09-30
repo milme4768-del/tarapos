@@ -20,10 +20,12 @@ import {
   ChevronDown,
   RefreshCw,
   Utensils,
+  Store,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useCartStore } from '../store/cartStore';
 import { getActiveCatalogApi } from '../api/products';
+import { getOutletsApi } from '../api/outlets';
 import { lookupCustomerApi } from '../api/customers';
 import { createBillApi } from '../api/bills';
 import VariantModal from '../components/VariantModal';
@@ -69,6 +71,10 @@ export default function Billing() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Outlets for billing
+  const [availableOutlets, setAvailableOutlets] = useState([]);
+  const [selectedOutletId, setSelectedOutletId] = useState('');
+
   // Selected product for variant modal
   const [selectedProductForVariant, setSelectedProductForVariant] = useState(null);
 
@@ -85,9 +91,17 @@ export default function Billing() {
   // Phone lookup debounce
   const lookupTimeoutRef = useRef(null);
 
-  const outlet = user?.outletId || {};
+  const selectedOutlet = useMemo(() => {
+    if (!selectedOutletId) return null;
+    return availableOutlets.find((o) => o._id === selectedOutletId) || null;
+  }, [availableOutlets, selectedOutletId]);
+
   const currency = 'Rs. ';
-  const taxPercentage = Number(outlet?.taxPercentage ?? settings?.defaultTaxPercentage ?? 0);
+  const taxPercentage = Number(
+    selectedOutlet
+      ? (selectedOutlet.taxPercentage ?? settings?.defaultTaxPercentage ?? 0)
+      : (settings?.defaultTaxPercentage ?? 0)
+  );
 
   // Listen to online/offline network events
   useEffect(() => {
@@ -103,10 +117,26 @@ export default function Billing() {
     };
   }, [setOnlineStatus]);
 
-  // Load Active Catalog on mount
+  // Load Active Catalog and Available Outlets on mount
   useEffect(() => {
     loadActiveCatalog();
-  }, []);
+    loadOutlets();
+  }, [user]);
+
+  const loadOutlets = async () => {
+    try {
+      const res = await getOutletsApi();
+      const loaded = res.data || [];
+      setAvailableOutlets(loaded);
+
+      // Default selection logic:
+      // If user has a default outletId, select it; otherwise default to first loaded outlet
+      const defaultId = user?.outletId?._id || user?.outletId || (loaded[0]?._id || '');
+      setSelectedOutletId((prev) => (prev !== undefined && prev !== '' ? prev : defaultId));
+    } catch (err) {
+      console.error('Failed to load outlets for billing:', err);
+    }
+  };
 
   const loadActiveCatalog = async () => {
     setIsLoadingCatalog(true);
@@ -234,7 +264,7 @@ export default function Billing() {
       const discountAmount = getDiscountAmount();
       const payload = {
         clientRequestId,
-        outletId: outlet._id,
+        outletId: selectedOutlet ? selectedOutlet._id : null,
         customer: {
           name: cleanName,
           mobile: cleanMobile,
@@ -278,7 +308,7 @@ export default function Billing() {
   const totalCount = getTotalCount();
 
   return (
-    <div className="min-h-[calc(100vh-3.5rem)] bg-slate-100 flex flex-col pb-20 lg:pb-6">
+    <div className="min-h-[calc(100vh-3.5rem)] bg-slate-100 flex flex-col pb-36 lg:pb-6">
       {/* Offline Alert Banner */}
       {!isOnline && (
         <div className="bg-red-600 text-white text-xs px-4 py-2 flex items-center justify-between font-medium">
@@ -286,7 +316,7 @@ export default function Billing() {
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>Connection lost. Your current bill cart is safe on this device.</span>
           </div>
-          <span className="text-[11px] bg-red-700 px-2 py-0.5 rounded">Offline Mode</span>
+          <span className="text-[11px] bg-red-700 px-2 py-0.5 rounded font-bold">Offline</span>
         </div>
       )}
 
@@ -294,8 +324,40 @@ export default function Billing() {
       <div className="max-w-7xl mx-auto w-full p-2.5 sm:p-4 lg:p-6 flex-1 flex flex-col lg:flex-row gap-4 sm:gap-6">
         {/* Left Column: Products Catalog & Search */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Search Bar */}
-          <div className="bg-white p-2.5 sm:p-3 rounded-2xl shadow-xs border border-slate-200 mb-3">
+          {/* Top Bar: Branch Selector & Search */}
+          <div className="bg-white p-2.5 sm:p-3 rounded-2xl shadow-xs border border-slate-200 mb-3 space-y-2.5">
+            {/* Branch Selector Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+              <div className="flex items-center space-x-2 min-w-0">
+                <Store className="w-4 h-4 text-orange-600 shrink-0" />
+                <span className="text-xs font-bold text-slate-700 shrink-0">Branch:</span>
+                <select
+                  value={selectedOutletId}
+                  onChange={(e) => setSelectedOutletId(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-900 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-orange-500 cursor-pointer min-w-0 max-w-[200px] sm:max-w-xs truncate"
+                >
+                  <option value="">No Outlet / General</option>
+                  {availableOutlets.map((o) => (
+                    <option key={o._id} value={o._id}>
+                      📍 {o.name} ({o.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="text-[11px] flex items-center gap-1.5 self-start sm:self-auto">
+                {selectedOutlet ? (
+                  <span className="bg-orange-50 text-orange-800 font-semibold px-2 py-0.5 rounded-full border border-orange-200 truncate">
+                    {selectedOutlet.name} • {taxPercentage}% Tax
+                  </span>
+                ) : (
+                  <span className="bg-purple-50 text-purple-800 font-semibold px-2 py-0.5 rounded-full border border-purple-200">
+                    General Bill (No branch name)
+                  </span>
+                )}
+              </div>
+            </div>
+
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                 <Search className="w-4 h-4" />
@@ -545,6 +607,42 @@ export default function Billing() {
 
           {/* Customer & Billing Form */}
           <div className="p-3.5 border-t border-slate-100 bg-slate-50/50 space-y-3">
+            {/* Branch Selection in Cart */}
+            <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                  <Store className="w-3.5 h-3.5 text-orange-600" />
+                  <span>Branch For Bill</span>
+                </label>
+                {selectedOutlet ? (
+                  <span className="text-[10px] font-bold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded">
+                    {selectedOutlet.code}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded">
+                    No Branch
+                  </span>
+                )}
+              </div>
+              <select
+                value={selectedOutletId}
+                onChange={(e) => setSelectedOutletId(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-orange-500 cursor-pointer"
+              >
+                <option value="">No Outlet (Taraaang Organic Food PVT LTD)</option>
+                {availableOutlets.map((o) => (
+                  <option key={o._id} value={o._id}>
+                    📍 {o.name} ({o.code})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-slate-400">
+                {selectedOutlet
+                  ? `Outlet "${selectedOutlet.name}" will show on the printed bill.`
+                  : 'No branch selected — only Taraaang Organic Food PVT LTD will show on the bill.'}
+              </p>
+            </div>
+
             {/* Customer Inputs (Mandatory) */}
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -721,24 +819,30 @@ export default function Billing() {
         </div>
       </div>
 
-      {/* Mobile Sticky Bottom Summary Bar */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-xl px-4 py-2.5 flex items-center justify-between">
-        <div>
-          <p className="text-xs text-slate-500 font-medium">{totalCount} item(s) selected</p>
-          <p className="text-lg font-black text-slate-900 leading-tight">
-            {currency}{grandTotal.toFixed(2)}
-          </p>
-        </div>
+      {/* Mobile Floating Cart Summary Bar (Floats above mobile bottom navigation bar) */}
+      {totalCount > 0 && (
+        <div className="lg:hidden fixed bottom-14 left-3 right-3 z-30 bg-gradient-to-r from-orange-600 via-orange-600 to-amber-600 text-white rounded-2xl shadow-xl shadow-orange-600/30 px-3.5 py-2.5 flex items-center justify-between animate-in slide-in-from-bottom-2 duration-200">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-8 h-8 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center font-black text-sm text-white shrink-0">
+              {totalCount}
+            </div>
+            <div>
+              <p className="text-[10px] text-orange-100 font-bold uppercase tracking-wider leading-none">Total Bill</p>
+              <p className="text-base font-black leading-tight mt-0.5">
+                {currency}{grandTotal.toFixed(2)}
+              </p>
+            </div>
+          </div>
 
-        <button
-          onClick={() => setIsMobileCartOpen(true)}
-          disabled={items.length === 0}
-          className="flex items-center space-x-1.5 py-2.5 px-5 bg-orange-600 hover:bg-orange-700 active:scale-95 disabled:opacity-40 text-white rounded-xl font-bold text-sm shadow-md shadow-orange-600/25 transition-all"
-        >
-          <span>VIEW BILL</span>
-          <ChevronUp className="w-4 h-4" />
-        </button>
-      </div>
+          <button
+            onClick={() => setIsMobileCartOpen(true)}
+            className="flex items-center space-x-1.5 py-2 px-3.5 bg-white text-orange-700 hover:bg-orange-50 active:scale-95 rounded-xl font-black text-xs shadow-sm transition-all cursor-pointer"
+          >
+            <span>VIEW BILL</span>
+            <ChevronUp className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Mobile Cart Drawer (Slides up from bottom when "VIEW BILL" is tapped) */}
       {isMobileCartOpen && (
@@ -799,6 +903,37 @@ export default function Billing() {
 
             {/* Customer and Payment Controls */}
             <div className="p-4 bg-slate-50 border-t border-slate-200 space-y-3">
+              {/* Branch Selector for Mobile */}
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                    <Store className="w-3.5 h-3.5 text-orange-600" />
+                    <span>Branch For Bill</span>
+                  </label>
+                  {selectedOutlet ? (
+                    <span className="text-[10px] font-bold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded">
+                      {selectedOutlet.code}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded">
+                      No Branch
+                    </span>
+                  )}
+                </div>
+                <select
+                  value={selectedOutletId}
+                  onChange={(e) => setSelectedOutletId(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-orange-500 cursor-pointer"
+                >
+                  <option value="">No Outlet (Taraaang Organic Food PVT LTD)</option>
+                  {availableOutlets.map((o) => (
+                    <option key={o._id} value={o._id}>
+                      📍 {o.name} ({o.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-0.5">
@@ -960,7 +1095,7 @@ export default function Billing() {
       <button
         type="button"
         onClick={() => setIsCustomItemModalOpen(true)}
-        className="fixed bottom-20 sm:bottom-8 right-4 sm:right-8 z-40 flex items-center space-x-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 active:scale-95 text-white py-3 px-4 sm:px-5 rounded-full shadow-2xl shadow-orange-600/40 border border-white/30 backdrop-blur-xs font-bold text-xs sm:text-sm tracking-wide transition-all group cursor-pointer"
+        className="fixed bottom-28 sm:bottom-8 right-3.5 sm:right-8 z-30 flex items-center space-x-1.5 sm:space-x-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 active:scale-95 text-white py-2.5 sm:py-3 px-3.5 sm:px-5 rounded-full shadow-2xl shadow-orange-600/40 border border-white/30 backdrop-blur-xs font-bold text-xs sm:text-sm tracking-wide transition-all group cursor-pointer"
         title="Add unlisted / manual food item"
       >
         <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center group-hover:rotate-90 transition-transform duration-200">
@@ -993,7 +1128,7 @@ export default function Billing() {
       <BillSuccessModal
         isOpen={Boolean(completedBillData)}
         billData={completedBillData}
-        outlet={outlet}
+        outlet={completedBillData?.bill?.outletId || selectedOutlet}
         restaurantName={settings?.restaurantName}
         onEditBill={(bill) => setBillToEdit(bill)}
         onNewBill={() => {

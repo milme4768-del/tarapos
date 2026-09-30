@@ -18,12 +18,18 @@ const getUsers = async (req, res, next) => {
     }
 
     if (outletId) {
-      query.outletId = outletId;
+      query.$or = [{ outletId }, { outlets: outletId }];
     }
 
     if (search) {
       const searchRegex = new RegExp(search.trim(), 'i');
-      query.$or = [{ name: searchRegex }, { email: searchRegex }, { phone: searchRegex }];
+      const searchCondition = [{ name: searchRegex }, { email: searchRegex }, { phone: searchRegex }];
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, { $or: searchCondition }];
+        delete query.$or;
+      } else {
+        query.$or = searchCondition;
+      }
     }
 
     const pageNum = Math.max(1, parseInt(page, 10));
@@ -33,6 +39,7 @@ const getUsers = async (req, res, next) => {
     const [users, total] = await Promise.all([
       User.find(query)
         .populate('outletId', 'name code')
+        .populate('outlets', 'name code')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
@@ -62,7 +69,7 @@ const getUsers = async (req, res, next) => {
  */
 const createUser = async (req, res, next) => {
   try {
-    const { name, email, password, role, outletId, phone } = req.body;
+    const { name, email, password, role, outletId, outlets, phone } = req.body;
 
     if (!name || !email || !password || !role) {
       return res.status(400).json({
@@ -72,11 +79,18 @@ const createUser = async (req, res, next) => {
       });
     }
 
-    // Role check: non-admin roles require an outlet
-    if (role !== ROLES.ADMIN && !outletId) {
+    let assignedOutlets = [];
+    if (Array.isArray(outlets) && outlets.length > 0) {
+      assignedOutlets = outlets.filter(Boolean);
+    } else if (outletId) {
+      assignedOutlets = [outletId];
+    }
+
+    // Role check: non-admin roles require at least one outlet
+    if (role !== ROLES.ADMIN && assignedOutlets.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Staff and Managers must be assigned to an outlet.',
+        message: 'Staff and Managers must be assigned to at least one outlet.',
         errorCode: 'OUTLET_REQUIRED_FOR_STAFF',
       });
     }
@@ -90,23 +104,29 @@ const createUser = async (req, res, next) => {
       });
     }
 
+    const primaryOutlet = assignedOutlets.length > 0 ? assignedOutlets[0] : null;
+
     const user = await User.create({
       name: name.trim(),
       email: email.toLowerCase().trim(),
       password,
       role,
-      outletId: role === ROLES.ADMIN ? null : outletId,
+      outletId: role === ROLES.ADMIN ? null : primaryOutlet,
+      outlets: role === ROLES.ADMIN ? [] : assignedOutlets,
       phone: phone ? phone.trim() : '',
     });
 
-    await user.populate('outletId', 'name code');
+    await user.populate([
+      { path: 'outletId', select: 'name code' },
+      { path: 'outlets', select: 'name code' },
+    ]);
 
     // Audit log
     await AuditLog.create({
       action: 'USER_CREATED',
       performedBy: req.user._id,
       outletId: user.outletId ? user.outletId._id : null,
-      details: { userId: user._id, email: user.email, role: user.role },
+      details: { userId: user._id, email: user.email, role: user.role, outlets: user.outlets },
     });
 
     const userObj = user.toObject();
@@ -129,7 +149,7 @@ const createUser = async (req, res, next) => {
  */
 const updateUser = async (req, res, next) => {
   try {
-    const { name, email, role, outletId, phone, password, isActive } = req.body;
+    const { name, email, role, outletId, outlets, phone, password, isActive } = req.body;
 
     const user = await User.findById(req.params.id);
     if (!user) {
@@ -155,7 +175,16 @@ const updateUser = async (req, res, next) => {
     if (name) user.name = name.trim();
     if (phone !== undefined) user.phone = phone.trim();
     if (role) user.role = role;
-    if (outletId !== undefined) user.outletId = role === ROLES.ADMIN ? null : outletId;
+    if (outlets !== undefined || outletId !== undefined) {
+      let assignedOutlets = [];
+      if (Array.isArray(outlets)) {
+        assignedOutlets = outlets.filter(Boolean);
+      } else if (outletId) {
+        assignedOutlets = [outletId];
+      }
+      user.outlets = (user.role === ROLES.ADMIN || role === ROLES.ADMIN) ? [] : assignedOutlets;
+      user.outletId = (user.role === ROLES.ADMIN || role === ROLES.ADMIN) ? null : (assignedOutlets[0] || null);
+    }
     if (isActive !== undefined) user.isActive = Boolean(isActive);
 
     if (password && password.trim().length >= 6) {
@@ -163,13 +192,16 @@ const updateUser = async (req, res, next) => {
     }
 
     await user.save();
-    await user.populate('outletId', 'name code');
+    await user.populate([
+      { path: 'outletId', select: 'name code' },
+      { path: 'outlets', select: 'name code' },
+    ]);
 
     await AuditLog.create({
       action: 'USER_UPDATED',
       performedBy: req.user._id,
       outletId: user.outletId ? user.outletId._id : null,
-      details: { userId: user._id, email: user.email, role: user.role },
+      details: { userId: user._id, email: user.email, role: user.role, outlets: user.outlets },
     });
 
     const userObj = user.toObject();

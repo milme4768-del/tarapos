@@ -50,23 +50,25 @@ export const generateReceiptPDF = (
   doc.text(splitName, 40, y, { align: 'center' });
   y += splitName.length * 4.2;
 
-  // Outlet Name
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.text(outlet?.name || 'Central Branch', 40, y, { align: 'center' });
-  y += 3.5;
-
-  if (outlet?.address) {
-    doc.setFontSize(7);
-    const splitAddr = doc.splitTextToSize(outlet.address, 68);
-    doc.text(splitAddr, 40, y, { align: 'center' });
-    y += splitAddr.length * 3;
-  }
-
-  if (outlet?.phone) {
-    doc.setFontSize(7);
-    doc.text(`Phone: ${outlet.phone}`, 40, y, { align: 'center' });
+  // Outlet Name (only if outlet is selected)
+  if (outlet && outlet.name) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.text(outlet.name, 40, y, { align: 'center' });
     y += 3.5;
+
+    if (outlet.address) {
+      doc.setFontSize(7);
+      const splitAddr = doc.splitTextToSize(outlet.address, 68);
+      doc.text(splitAddr, 40, y, { align: 'center' });
+      y += splitAddr.length * 3;
+    }
+
+    if (outlet.phone) {
+      doc.setFontSize(7);
+      doc.text(`Phone: ${outlet.phone}`, 40, y, { align: 'center' });
+      y += 3.5;
+    }
   }
 
   // Dashed divider Line (width 5mm to 75mm, total 70mm safe print area)
@@ -277,17 +279,19 @@ export const downloadReceiptImage = (bill, outlet, restaurantName = 'Taraaang Or
   ctx.fillText(nameToPrint, width / 2, y);
   y += 24;
 
-  ctx.font = fontSub;
-  ctx.fillText(outlet?.name || 'Central Branch', width / 2, y);
-  y += 18;
+  if (outlet && outlet.name) {
+    ctx.font = fontSub;
+    ctx.fillText(outlet.name, width / 2, y);
+    y += 18;
 
-  if (outlet?.address) {
-    ctx.fillText(outlet.address, width / 2, y);
-    y += 18;
-  }
-  if (outlet?.phone) {
-    ctx.fillText(`Phone: ${outlet.phone}`, width / 2, y);
-    y += 18;
+    if (outlet.address) {
+      ctx.fillText(outlet.address, width / 2, y);
+      y += 18;
+    }
+    if (outlet.phone) {
+      ctx.fillText(`Phone: ${outlet.phone}`, width / 2, y);
+      y += 18;
+    }
   }
 
   // Dashed line
@@ -502,8 +506,10 @@ export const buildWhatsAppText = (bill, outlet, restaurantName) => {
     nameToShare = `${nameToShare} PVT LTD`;
   }
 
+  const outletHeader = outlet && outlet.name ? ` (${outlet.name})` : '';
+
   return (
-    `*${nameToShare}* (${outlet?.name || 'Restaurant'})\n` +
+    `*${nameToShare}*${outletHeader}\n` +
     `--------------------------------\n` +
     `Bill No: *${bill.billNumber}*\n` +
     `Date: ${new Date(bill.createdAt || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}\n` +

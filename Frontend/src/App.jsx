@@ -49,7 +49,7 @@ export default function App() {
       <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
         {user && <Navbar />}
 
-        <main className="flex-1">
+        <main className="flex-1 pb-16 lg:pb-0">
           <Routes>
             {/* Public Login */}
             <Route path="/login" element={<Login />} />

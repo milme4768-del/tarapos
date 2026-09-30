@@ -24,6 +24,7 @@ export default function StaffManager() {
     password: '',
     role: 'staff',
     outletId: '',
+    outlets: [],
     phone: '',
   });
 
@@ -52,12 +53,14 @@ export default function StaffManager() {
 
   const openCreateModal = () => {
     setEditingUser(null);
+    const initialOutletId = outlets[0]?._id || '';
     setFormData({
       name: '',
       email: '',
       password: '',
       role: 'staff',
-      outletId: outlets[0]?._id || '',
+      outletId: initialOutletId,
+      outlets: initialOutletId ? [initialOutletId] : [],
       phone: '',
     });
     setErrorMsg('');
@@ -66,16 +69,52 @@ export default function StaffManager() {
 
   const openEditModal = (u) => {
     setEditingUser(u);
+    const assigned = (u.outlets && u.outlets.length > 0)
+      ? u.outlets.map((o) => o._id || o)
+      : (u.outletId ? [u.outletId._id || u.outletId] : []);
     setFormData({
       name: u.name,
       email: u.email,
       password: '',
       role: u.role,
-      outletId: u.outletId?._id || u.outletId || '',
+      outletId: assigned[0] || '',
+      outlets: assigned,
       phone: u.phone || '',
     });
     setErrorMsg('');
     setIsModalOpen(true);
+  };
+
+  const toggleOutlet = (outletId) => {
+    setFormData((prev) => {
+      const current = prev.outlets || [];
+      const exists = current.includes(outletId);
+      const updated = exists
+        ? current.filter((id) => id !== outletId)
+        : [...current, outletId];
+      return {
+        ...prev,
+        outlets: updated,
+        outletId: updated[0] || '',
+      };
+    });
+  };
+
+  const selectAllOutlets = () => {
+    const allIds = outlets.map((o) => o._id);
+    setFormData((prev) => ({
+      ...prev,
+      outlets: allIds,
+      outletId: allIds[0] || '',
+    }));
+  };
+
+  const clearAllOutlets = () => {
+    setFormData((prev) => ({
+      ...prev,
+      outlets: [],
+      outletId: '',
+    }));
   };
 
   const handleSave = async (e) => {
@@ -90,8 +129,8 @@ export default function StaffManager() {
       return;
     }
 
-    if (formData.role !== 'admin' && !formData.outletId) {
-      setErrorMsg('Managers and Billing Staff must be assigned to an outlet.');
+    if (formData.role !== 'admin' && (!formData.outlets || formData.outlets.length === 0)) {
+      setErrorMsg('Managers and Billing Staff must be assigned to at least one outlet.');
       return;
     }
 
@@ -209,9 +248,32 @@ export default function StaffManager() {
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <span className="text-xs text-slate-700 font-semibold">
-                        {u.outletId?.name ? `${u.outletId.name} (${u.outletId.code})` : 'All Outlets (HQ)'}
-                      </span>
+                      {u.role === 'admin' ? (
+                        <span className="text-xs text-purple-700 bg-purple-50 px-2 py-0.5 rounded font-semibold">
+                          All Outlets (HQ)
+                        </span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1 max-w-[280px]">
+                          {u.outlets && u.outlets.length > 0 ? (
+                            u.outlets.map((o) => (
+                              <span
+                                key={o._id || o}
+                                className="text-[11px] font-semibold bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md border border-slate-200 flex items-center gap-1"
+                              >
+                                <Store className="w-3 h-3 text-orange-600" />
+                                {o.name || o.code || 'Branch'}
+                              </span>
+                            ))
+                          ) : u.outletId ? (
+                            <span className="text-[11px] font-semibold bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md border border-slate-200 flex items-center gap-1">
+                              <Store className="w-3 h-3 text-orange-600" />
+                              {u.outletId.name} ({u.outletId.code})
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">None</span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-center">
                       <button
@@ -307,7 +369,7 @@ export default function StaffManager() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     System Role *
@@ -318,29 +380,70 @@ export default function StaffManager() {
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 font-medium"
                   >
                     <option value="staff">Billing Staff</option>
-                    <option value="manager">Outlet Manager</option>
-                    <option value="admin">Administrator</option>
+                    <option value="manager">Outlet Manager (Can manage multiple branches)</option>
+                    <option value="admin">Administrator (Full HQ Access)</option>
                   </select>
                 </div>
 
                 {formData.role !== 'admin' && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Assigned Branch *
-                    </label>
-                    <select
-                      required
-                      value={formData.outletId}
-                      onChange={(e) => setFormData({ ...formData, outletId: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 font-medium"
-                    >
-                      <option value="">Select Branch</option>
-                      {outlets.map((o) => (
-                        <option key={o._id} value={o._id}>
-                          {o.name}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        Assigned Branch(es) *
+                        <span className="text-slate-400 font-normal lowercase ml-1">
+                          ({formData.outlets?.length || 0} selected)
+                        </span>
+                      </label>
+                      <div className="flex gap-2 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={selectAllOutlets}
+                          className="text-orange-600 font-semibold hover:underline cursor-pointer"
+                        >
+                          Select All
+                        </button>
+                        <span className="text-slate-300">|</span>
+                        <button
+                          type="button"
+                          onClick={clearAllOutlets}
+                          className="text-slate-500 hover:text-slate-700 hover:underline cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="max-h-44 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                      {outlets.map((o) => {
+                        const isChecked = formData.outlets?.includes(o._id);
+                        return (
+                          <label
+                            key={o._id}
+                            className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                              isChecked
+                                ? 'bg-orange-50/80 border-orange-300 text-orange-900 font-bold'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleOutlet(o._id)}
+                                className="w-4 h-4 text-orange-600 rounded border-slate-300 focus:ring-orange-500 cursor-pointer"
+                              />
+                              <span>{o.name}</span>
+                            </div>
+                            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-bold">
+                              {o.code}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      💡 Managers & staff can be assigned to multiple branches. During billing, they can choose which branch to bill for.
+                    </p>
                   </div>
                 )}
               </div>
